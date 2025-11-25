@@ -415,7 +415,7 @@ mod tests {
     #[serial]
     async fn send_with_retries() {
         let start = std::time::Instant::now();
-        let mut client = JitoClient::new_authenticated(SERVER_URL2, None)
+        let mut client = JitoClient::new_authenticated(SERVER_URL2, None,Keypair::new())
             .await
             .expect("Failed to create client");
 
