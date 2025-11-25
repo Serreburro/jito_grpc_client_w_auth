@@ -208,6 +208,44 @@ impl JitoClient<Channel> {
 }
 
 impl JitoClient<InterceptedService<Channel, ClientInterceptor>> {
+    pub async fn send_with_retry(
+        &mut self,
+        transactions: &[VersionedTransaction],
+        retry_logic: RetryLogic,
+    ) -> JitoClientResult<String> {
+        let bundle = Bundle::create(transactions)?;
+        let request = SendBundleRequest {
+            bundle: Some(bundle),
+        };
+        let mut retries = 0u8;
+        loop {
+            match self.client.send_bundle(request.clone()).await {
+                Ok(response) => {
+                    return Ok(response.into_inner().uuid);
+                }
+                Err(e) => {
+                    log::debug!("Send error: {e}");
+                    Delay::new(retry_logic.jitter()).await;
+                    retries += 1;
+                    if retries >= retry_logic.max_retries {
+                        return Err(JitoClientError::MaxRetriesError);
+                    }
+                }
+            }
+        }
+    }
+    pub async fn send(
+        &mut self,
+        transactions: &[VersionedTransaction],
+    ) -> JitoClientResult<String> {
+        let bundle = Bundle::create(transactions)?;
+        let request = SendBundleRequest {
+            bundle: Some(bundle),
+        };
+        let response = self.client.send_bundle(request).await?;
+        Ok(response.into_inner().uuid)
+    }
+
     pub async fn new_authenticated(
         endpoint: &'static str,
         timeout: Option<u64>,
@@ -377,7 +415,7 @@ mod tests {
     #[serial]
     async fn send_with_retries() {
         let start = std::time::Instant::now();
-        let mut client = JitoClient::new(SERVER_URL2, None)
+        let mut client = JitoClient::new_authenticated(SERVER_URL2, None)
             .await
             .expect("Failed to create client");
 
